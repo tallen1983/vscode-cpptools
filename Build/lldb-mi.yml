@@ -1,0 +1,35 @@
+variables:
+  llvmTag: llvmorg-8.0.1
+  clangVer: 3.6
+
+jobs:
+- job: LLDB_MI
+  pool:
+    vmImage: 'ubuntu-16.04'
+  steps:
+  - script: sudo apt-get update
+  - script: sudo apt-get install ninja-build clang++-$(clangVer) -y
+  - script: |
+     git clone https://github.com/llvm/llvm-project.git
+     cd llvm-project
+     git checkout tags/$(llvmTag)
+     cd ..
+     mkdir llvm-inst
+     mkdir llvm-build
+     cd llvm-build
+
+     cmake -DLLVM_ENABLE_PROJECTS="clang;lldb;libcxx;libcxxabi" -DCMAKE_INSTALL_PREFIX=~/buildspace/llvm-inst/ -GNinja ../llvm-project/llvm
+     ninja
+     ninja install
+
+     # Download lldb-mi and build it against our custom installation.
+     mkdir buildspace
+     cd ~/buildspace
+     git clone https://github.com/lldb-tools/lldb-mi
+     cd lldb-mi
+
+     # Create a separate build directory for building lldb-mi.
+     mkdir build
+     cd build
+     cmake -DCMAKE_PREFIX_PATH=~/buildspace/llvm-inst/ -GNinja ..
+     ninja
