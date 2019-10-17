@@ -8,7 +8,7 @@ jobs:
     vmImage: 'ubuntu-16.04'
   steps:
   - script: sudo apt-get update
-  - script: sudo apt-get install ninja-build clang++-$(clangVer) -y
+  - script: sudo apt-get install cmake ninja-build clang++-$(clangVer) build-essential subversion swig python-dev libedit-dev -y
   - script: |
      git clone https://github.com/llvm/llvm-project.git
      cd llvm-project
