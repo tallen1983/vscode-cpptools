@@ -903,14 +903,11 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
             let settings: CppSettings[] = [];
             let otherSettings: OtherSettings[] = [];
 
-            if (!this.rootFolder) {
-                settings.push(workspaceSettings);
-                otherSettings.push(new OtherSettings(null));
-            } else {
-                for (let workspaceFolder of vscode.workspace.workspaceFolders) {
-                    settings.push(new CppSettings(workspaceFolder.uri));
-                    otherSettings.push(new OtherSettings(workspaceFolder.uri));
-                }
+            settings.push(workspaceSettings);
+            otherSettings.push(new OtherSettings(null));
+            for (let workspaceFolder of vscode.workspace.workspaceFolders) {
+                settings.push(new CppSettings(workspaceFolder.uri));
+                otherSettings.push(new OtherSettings(workspaceFolder.uri));
             }
 
             for (let setting of settings) {
@@ -1042,7 +1039,8 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
         let settingsChanged: any = {
             C_Cpp: cppSettings,
             files: { exclude: vscode.workspace.getConfiguration("files", this.RootUri).get("exclude") },
-            search: { exclude: vscode.workspace.getConfiguration("search", this.RootUri).get("exclude") }
+            search: { exclude: vscode.workspace.getConfiguration("search", this.RootUri).get("exclude") },
+            tab_size: { tabSize: vscode.workspace.getConfiguration("editor", this.RootUri).get("tabSize") }
         };
         this.languageClient.sendNotification(SettingsChangedNotification, { settings: settingsChanged });
 
