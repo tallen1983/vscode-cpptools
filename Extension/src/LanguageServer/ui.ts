@@ -5,7 +5,7 @@
 'use strict';
 
 import * as vscode from 'vscode';
-import { Client } from './client';
+import { WorkspaceFolder } from './workspaceFolder';
 import { ReferencesCommandMode, referencesCommandModeToString } from './references';
 import { getCustomConfigProviders, CustomConfigurationProviderCollection } from './customProviders';
 import * as nls from 'vscode-nls';
@@ -164,12 +164,12 @@ export class UI {
         this.ShowConfiguration = isCpp || isSettingsJson;
     }
 
-    public bind(client: Client): void {
-        client.TagParsingChanged(value => { this.IsTagParsing = value; });
-        client.IntelliSenseParsingChanged(value => { this.IsUpdatingIntelliSense = value; });
-        client.ReferencesCommandModeChanged(value => { this.ReferencesCommand = value; });
-        client.TagParserStatusChanged(value => { this.TagParseStatus = value; });
-        client.ActiveConfigChanged(value => { this.ActiveConfig = value; });
+    public bind(workspaceFolder: WorkspaceFolder): void {
+        workspaceFolder.TagParsingChanged(value => { this.IsTagParsing = value; });
+        workspaceFolder.IntelliSenseParsingChanged(value => { this.IsUpdatingIntelliSense = value; });
+        workspaceFolder.ReferencesCommandModeChanged(value => { this.ReferencesCommand = value; });
+        workspaceFolder.TagParserStatusChanged(value => { this.TagParseStatus = value; });
+        workspaceFolder.ActiveConfigChanged(value => { this.ActiveConfig = value; });
     }
 
     public showConfigurations(configurationNames: string[]): Thenable<number> {

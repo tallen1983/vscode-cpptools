@@ -4,7 +4,7 @@
  * ------------------------------------------------------------------------------------------ */
 'use strict';
 import * as vscode from 'vscode';
-import { DefaultClient, RenameParams, FindAllReferencesParams } from './client';
+import { DefaultWorkspaceFolder, RenameParams, FindAllReferencesParams } from './workspaceFolder';
 import { FindAllRefsView } from './referencesView';
 import * as telemetry from '../telemetry';
 import * as nls from 'vscode-nls';
@@ -122,7 +122,7 @@ export function getReferenceTagString(referenceType: ReferenceType, referenceCan
 }
 
 export class ReferencesManager {
-    private client: DefaultClient;
+    private workspaceFolder: DefaultWorkspaceFolder;
     private disposables: vscode.Disposable[] = [];
 
     private referencesChannel: vscode.OutputChannel;
@@ -161,8 +161,8 @@ export class ReferencesManager {
     private currentUpdateProgressResolve: () => void;
     public groupByFile: PersistentState<boolean> = new PersistentState<boolean>("CPP.referencesGroupByFile", false);
 
-    constructor(client: DefaultClient) {
-        this.client = client;
+    constructor(workspaceFolder: DefaultWorkspaceFolder) {
+        this.workspaceFolder = workspaceFolder;
     }
 
     initializeViews(): void {
@@ -271,13 +271,13 @@ export class ReferencesManager {
     }
 
     private handleProgressStarted(referencesProgress: ReferencesProgress): void {
-        this.referencesStartedWhileTagParsing = this.client.IsTagParsing;
+        this.referencesStartedWhileTagParsing = this.workspaceFolder.IsTagParsing;
 
         let mode: ReferencesCommandMode =
             (referencesProgress === ReferencesProgress.StartedRename) ? ReferencesCommandMode.Rename :
             (this.visibleRangesDecreased && (Date.now() - this.visibleRangesDecreasedTicks < this.ticksForDetectingPeek) ?
             ReferencesCommandMode.Peek : ReferencesCommandMode.Find);
-        this.client.setReferencesCommandMode(mode);
+        this.workspaceFolder.setReferencesCommandMode(mode);
 
         this.referencesPrevProgressIncrement = 0;
         this.referencesPrevProgressMessage = "";
@@ -290,7 +290,7 @@ export class ReferencesManager {
 
         this.referencesDelayProgress = setInterval(() => {
 
-            this.referencesProgressOptions = { location: vscode.ProgressLocation.Notification, title: referencesCommandModeToString(this.client.ReferencesCommandMode), cancellable: true };
+            this.referencesProgressOptions = { location: vscode.ProgressLocation.Notification, title: referencesCommandModeToString(this.workspaceFolder.ReferencesCommandMode), cancellable: true };
             this.referencesProgressMethod = (progress: vscode.Progress<{message?: string; increment?: number }>, token: vscode.CancellationToken) =>
             // tslint:disable-next-line: promise-must-complete
                 new Promise((resolve) => {
@@ -298,7 +298,7 @@ export class ReferencesManager {
                     this.reportProgress(progress, true, mode);
                     this.currentUpdateProgressTimer = setInterval(() => {
                         if (token.isCancellationRequested && !this.referencesCanceled) {
-                            this.client.cancelReferences();
+                            this.workspaceFolder.cancelReferences();
                             this.referencesCanceled = true;
                         }
                         if (this.referencesCurrentProgressUICounter !== referencePreviousProgressUICounter) {
@@ -326,7 +326,7 @@ export class ReferencesManager {
         switch (notificationBody.referencesProgress) {
             case ReferencesProgress.StartedRename:
             case ReferencesProgress.Started:
-                if (this.client.ReferencesCommandMode === ReferencesCommandMode.Peek) {
+                if (this.workspaceFolder.ReferencesCommandMode === ReferencesCommandMode.Peek) {
                     telemetry.logLanguageServerEvent("peekReferences");
                 }
                 this.handleProgressStarted(notificationBody.referencesProgress);
@@ -347,7 +347,7 @@ export class ReferencesManager {
             this.referencesCanceled = false;
             this.resultsCallback(null, true);
         } else {
-            this.client.sendRenameNofication(params);
+            this.workspaceFolder.sendRenameNofication(params);
         }
     }
 
@@ -361,7 +361,7 @@ export class ReferencesManager {
             this.referencesCanceled = false;
             this.resultsCallback(null, true);
         } else {
-            this.client.sendFindAllReferencesNotification(params);
+            this.workspaceFolder.sendFindAllReferencesNotification(params);
         }
     }
 
@@ -372,19 +372,19 @@ export class ReferencesManager {
         this.initializeViews();
         this.clearViews();
 
-        if (this.client.ReferencesCommandMode === ReferencesCommandMode.Peek && !this.referencesChannel) {
+        if (this.workspaceFolder.ReferencesCommandMode === ReferencesCommandMode.Peek && !this.referencesChannel) {
             this.referencesChannel = vscode.window.createOutputChannel(localize("c.cpp.peek.references", "C/C++ Peek References"));
             this.disposables.push(this.referencesChannel);
         }
 
         if (this.referencesStartedWhileTagParsing) {
             let msg: string = localize("some.references.may.be.missing", "[Warning] Some references may be missing, because workspace parsing was incomplete when {0} was started.",
-                referencesCommandModeToString(this.client.ReferencesCommandMode));
-            if (this.client.ReferencesCommandMode === ReferencesCommandMode.Peek) {
+                referencesCommandModeToString(this.workspaceFolder.ReferencesCommandMode));
+            if (this.workspaceFolder.ReferencesCommandMode === ReferencesCommandMode.Peek) {
                 this.referencesChannel.appendLine(msg);
                 this.referencesChannel.appendLine("");
                 this.referencesChannel.show(true);
-            } else if (this.client.ReferencesCommandMode === ReferencesCommandMode.Find) {
+            } else if (this.workspaceFolder.ReferencesCommandMode === ReferencesCommandMode.Find) {
                 let logChannel: vscode.OutputChannel = logger.getOutputChannel();
                 logChannel.appendLine(msg);
                 logChannel.appendLine("");
@@ -399,7 +399,7 @@ export class ReferencesManager {
         this.referencesRequestPending = false;
         this.referencesCanceled = false;
 
-        let currentReferenceCommandMode: ReferencesCommandMode = this.client.ReferencesCommandMode;
+        let currentReferenceCommandMode: ReferencesCommandMode = this.workspaceFolder.ReferencesCommandMode;
 
         if (referencesResult.isFinished) {
             this.symbolSearchInProgress = false;
@@ -410,7 +410,7 @@ export class ReferencesManager {
                 this.currentUpdateProgressResolve = null;
                 this.currentUpdateProgressTimer = null;
             }
-            this.client.setReferencesCommandMode(ReferencesCommandMode.None);
+            this.workspaceFolder.setReferencesCommandMode(ReferencesCommandMode.None);
         }
 
         if (currentReferenceCommandMode === ReferencesCommandMode.Rename) {
@@ -474,7 +474,7 @@ export class ReferencesManager {
         this.renameView.show(false);
 
         // Rename should not clear the Find All References view, as it's in a different view container
-        if (this.client.ReferencesCommandMode !== ReferencesCommandMode.Rename) {
+        if (this.workspaceFolder.ReferencesCommandMode !== ReferencesCommandMode.Rename) {
             if (this.referencesChannel) {
                 this.referencesChannel.clear();
             }

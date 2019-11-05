@@ -244,7 +244,7 @@
           ],
           "default": "highest",
           "description": "%c_cpp.configuration.workspaceParsingPriority.description%",
-          "scope": "resource"
+          "scope": "window"
         },
         "C_Cpp.workspaceSymbols": {
           "type": "string",

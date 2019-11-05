@@ -12,8 +12,8 @@ import * as util from '../common';
 import * as telemetry from '../telemetry';
 import { TreeNode, NodeType, getCurrentRenameModel } from './referencesModel';
 import { UI, getUI } from './ui';
-import { Client } from './client';
-import { ClientCollection } from './clientCollection';
+import { WorkspaceFolder } from './workspaceFolder';
+import { Workspace } from './workspace';
 import { CppSettings } from './settings';
 import { PersistentWorkspaceState, PersistentState } from './persistentState';
 import { getLanguageConfig } from './languageConfig';
@@ -35,7 +35,7 @@ nls.config({ messageFormat: nls.MessageFormat.bundle, bundleFormat: nls.BundleFo
 const localize: nls.LocalizeFunc = nls.loadMessageBundle();
 
 let prevCrashFile: string;
-let clients: ClientCollection;
+let workspace: Workspace;
 let activeDocument: string;
 let ui: UI;
 let disposables: vscode.Disposable[] = [];
@@ -189,7 +189,7 @@ export function activate(activationEventOccurred: boolean): void {
     ];
     codeActionProvider = vscode.languages.registerCodeActionsProvider(selector, {
         provideCodeActions: async (document: vscode.TextDocument, range: vscode.Range, context: vscode.CodeActionContext, token: vscode.CancellationToken): Promise<vscode.CodeAction[]> => {
-            if (!await clients.ActiveClient.getVcpkgEnabled()) {
+            if (!await workspace.ActiveWorkspaceFolder.getVcpkgEnabled()) {
                 return [];
             }
 
@@ -200,7 +200,7 @@ export function activate(activationEventOccurred: boolean): void {
 
             telemetry.logLanguageServerEvent('codeActionsProvided', { "source": "vcpkg" });
 
-            if (!await clients.ActiveClient.getVcpkgInstalled()) {
+            if (!await workspace.ActiveWorkspaceFolder.getVcpkgInstalled()) {
                 return [getVcpkgHelpAction()];
             }
 
@@ -276,18 +276,18 @@ export async function getBuildTasks(returnCompilerPath: boolean): Promise<vscode
 
     // Get compiler paths.
     const isWindows: boolean = os.platform() === 'win32';
-    let activeClient: Client;
+    let activeWorkspaceFolder: WorkspaceFolder;
     try {
-        activeClient = getActiveClient();
+        activeWorkspaceFolder = getActiveWorkspaceFolder();
     } catch (e) {
         if (!e || e.message !== intelliSenseDisabledError) {
-            console.error("Unknown error calling getActiveClient().");
+            console.error("Unknown error calling getActiveWorkspaceFolder().");
         }
         return []; // Language service features may be disabled.
     }
 
     // Get user compiler path.
-    const userCompilerPathAndArgs: util.CompilerPathAndArgs = await activeClient.getCurrentCompilerPathAndArgs();
+    const userCompilerPathAndArgs: util.CompilerPathAndArgs = await activeWorkspaceFolder.getCurrentCompilerPathAndArgs();
     let userCompilerPath: string = userCompilerPathAndArgs.compilerPath;
     if (userCompilerPath && userCompilerPathAndArgs.compilerName) {
         userCompilerPath = userCompilerPath.trim();
@@ -301,7 +301,7 @@ export async function getBuildTasks(returnCompilerPath: boolean): Promise<vscode
     // Get known compiler paths. Do not include the known compiler path that is the same as user compiler path.
     // Filter them based on the file type to get a reduced list appropriate for the active file.
     let knownCompilerPaths: string[];
-    let knownCompilers: configs.KnownCompiler[] = await activeClient.getKnownCompilers();
+    let knownCompilers: configs.KnownCompiler[] = await activeWorkspaceFolder.getKnownCompilers();
     if (knownCompilers) {
         knownCompilers = knownCompilers.filter(info => {
             return ((fileIsCpp && !info.isC) || (fileIsC && info.isC)) &&
@@ -363,7 +363,7 @@ export async function getBuildTasks(returnCompilerPath: boolean): Promise<vscode
         }
 
         const command: vscode.ShellExecution = new vscode.ShellExecution(compilerPath, [...args], { cwd: cwd });
-        const target: vscode.WorkspaceFolder = vscode.workspace.getWorkspaceFolder(clients.ActiveClient.RootUri);
+        const target: vscode.WorkspaceFolder = vscode.workspace.getWorkspaceFolder(workspace.ActiveWorkspaceFolder.RootUri);
         let task: vscode.Task = new vscode.Task(kind, target, taskName, taskSourceStr, command, '$gcc');
         task.definition = kind; // The constructor for vscode.Task will consume the definition. Reset it by reassigning.
         task.group = vscode.TaskGroup.Build;
@@ -431,7 +431,7 @@ function realActivation(): void {
 
     realActivationOccurred = true;
     console.log("starting language server");
-    clients = new ClientCollection();
+    workspace = new Workspace();
     ui = getUI();
 
     // Check for files left open from the previous session. We won't get events for these until they gain focus,
@@ -442,8 +442,8 @@ function realActivation(): void {
 
     // There may have already been registered CustomConfigurationProviders.
     // Request for configurations from those providers.
-    clients.forEach(client => {
-        getCustomConfigProviders().forEach(provider => client.onRegisterCustomConfigurationProvider(provider));
+    workspace.forEach(workspaceFolder => {
+        getCustomConfigProviders().forEach(provider => workspaceFolder.onRegisterCustomConfigurationProvider(provider));
     });
 
     disposables.push(vscode.workspace.onDidChangeConfiguration(onDidChangeSettings));
@@ -492,8 +492,8 @@ export function updateLanguageConfigurations(): void {
     languageConfigurations.forEach(d => d.dispose());
     languageConfigurations = [];
 
-    languageConfigurations.push(vscode.languages.setLanguageConfiguration('c', getLanguageConfig('c', clients.ActiveClient.RootUri)));
-    languageConfigurations.push(vscode.languages.setLanguageConfiguration('cpp', getLanguageConfig('cpp', clients.ActiveClient.RootUri)));
+    languageConfigurations.push(vscode.languages.setLanguageConfiguration('c', getLanguageConfig('c', workspace.ActiveWorkspaceFolder.RootUri)));
+    languageConfigurations.push(vscode.languages.setLanguageConfiguration('cpp', getLanguageConfig('cpp', workspace.ActiveWorkspaceFolder.RootUri)));
 }
 
 /*********************************************
@@ -501,15 +501,15 @@ export function updateLanguageConfigurations(): void {
  *********************************************/
 
 function onDidChangeSettings(event: vscode.ConfigurationChangeEvent): void {
-    let activeClient: Client = clients.ActiveClient;
-    const changedActiveClientSettings: { [key: string] : string } = activeClient.onDidChangeSettings(event);
-    clients.forEach(client => {
-        if (client !== activeClient) {
-            client.onDidChangeSettings(event);
+    let activeWorkspaceFolder: WorkspaceFolder = workspace.ActiveWorkspaceFolder;
+    const changedActiveWorkspaceFolderSettings: { [key: string] : string } = activeWorkspaceFolder.onDidChangeSettings(event);
+    workspace.forEach(workspaceFolder => {
+        if (workspaceFolder !== activeWorkspaceFolder) {
+            workspaceFolder.onDidChangeSettings(event);
         }
     });
 
-    const newUpdateChannel: string = changedActiveClientSettings['updateChannel'];
+    const newUpdateChannel: string = changedActiveWorkspaceFolderSettings['updateChannel'];
     if (newUpdateChannel) {
         if (newUpdateChannel === 'Default') {
             clearInterval(insiderUpdateTimer);
@@ -534,9 +534,9 @@ function onDidSaveTextDocument(doc: vscode.TextDocument): void {
 }
 
 function onDidChangeActiveTextEditor(editor: vscode.TextEditor): void {
-    /* need to notify the affected client(s) */
-    console.assert(clients !== undefined, "client should be available before active editor is changed");
-    if (clients === undefined) {
+    /* need to notify the affected WorkspaceFolder(s) */
+    console.assert(workspace !== undefined, "Workspace should be available before active editor is changed");
+    if (workspace === undefined) {
         return;
     }
 
@@ -545,14 +545,14 @@ function onDidChangeActiveTextEditor(editor: vscode.TextEditor): void {
         activeDocument = "";
     } else {
         activeDocument = editor.document.uri.toString();
-        clients.activeDocumentChanged(editor.document);
-        clients.ActiveClient.selectionChanged(Range.create(editor.selection.start, editor.selection.end));
+        workspace.activeDocumentChanged(editor.document);
+        workspace.ActiveWorkspaceFolder.selectionChanged(Range.create(editor.selection.start, editor.selection.end));
     }
     ui.activeDocumentChanged();
 }
 
 function onDidChangeTextEditorSelection(event: vscode.TextEditorSelectionChangeEvent): void {
-    /* need to notify the affected client(s) */
+    /* need to notify the affected WorkspaceFolder(s) */
     if (!event.textEditor || !vscode.window.activeTextEditor || event.textEditor.document.uri !== vscode.window.activeTextEditor.document.uri ||
         event.textEditor.document.uri.scheme !== "file" ||
         (event.textEditor.document.languageId !== "cpp" && event.textEditor.document.languageId !== "c")) {
@@ -562,24 +562,24 @@ function onDidChangeTextEditorSelection(event: vscode.TextEditorSelectionChangeE
     if (activeDocument !== event.textEditor.document.uri.toString()) {
         // For some strange (buggy?) reason we don't reliably get onDidChangeActiveTextEditor callbacks.
         activeDocument = event.textEditor.document.uri.toString();
-        clients.activeDocumentChanged(event.textEditor.document);
+        workspace.activeDocumentChanged(event.textEditor.document);
         ui.activeDocumentChanged();
     }
-    clients.ActiveClient.selectionChanged(Range.create(event.selections[0].start, event.selections[0].end));
+    workspace.ActiveWorkspaceFolder.selectionChanged(Range.create(event.selections[0].start, event.selections[0].end));
 }
 
 function onDidChangeVisibleTextEditors(editors: vscode.TextEditor[]): void {
-    clients.forEach(client => {
-        let editorsForThisClient: vscode.TextEditor[] = [];
+    workspace.forEach(workspaceFolders => {
+        let editorsForThisWorkspaceFolder: vscode.TextEditor[] = [];
         editors.forEach(editor => {
             if (editor.document.languageId === "c" || editor.document.languageId === "cpp") {
-                if (clients.checkOwnership(client, editor.document)) {
-                    editorsForThisClient.push(editor);
+                if (workspace.checkOwnership(workspaceFolders, editor.document)) {
+                    editorsForThisWorkspaceFolder.push(editor);
                 }
             }
         });
-        if (editorsForThisClient.length > 0) {
-            client.onDidChangeVisibleTextEditors(editorsForThisClient);
+        if (editorsForThisWorkspaceFolder.length > 0) {
+            workspaceFolders.onDidChangeVisibleTextEditors(editorsForThisWorkspaceFolder);
         }
     });
 }
@@ -587,9 +587,9 @@ function onDidChangeVisibleTextEditors(editors: vscode.TextEditor[]): void {
 function onDidChangeTextEditorVisibleRanges(textEditorVisibleRangesChangeEvent: vscode.TextEditorVisibleRangesChangeEvent): void {
     let languageId: String = textEditorVisibleRangesChangeEvent.textEditor.document.languageId;
     if (languageId === "c" || languageId === "cpp") {
-        clients.forEach(client => {
-            if (clients.checkOwnership(client, textEditorVisibleRangesChangeEvent.textEditor.document)) {
-                client.onDidChangeTextEditorVisibleRanges(textEditorVisibleRangesChangeEvent);
+        workspace.forEach(workspaceFolder => {
+            if (workspace.checkOwnership(workspaceFolder, textEditorVisibleRangesChangeEvent.textEditor.document)) {
+                workspaceFolder.onDidChangeTextEditorVisibleRanges(textEditorVisibleRangesChangeEvent);
             }
         });
     }
@@ -597,7 +597,7 @@ function onDidChangeTextEditorVisibleRanges(textEditorVisibleRangesChangeEvent: 
 
 function onInterval(): void {
     // TODO: do we need to pump messages to all clients? depends on what we do with the icons, I suppose.
-    clients.ActiveClient.onInterval();
+    workspace.ActiveWorkspaceFolder.onInterval();
 }
 
 /**
@@ -897,14 +897,14 @@ function onSwitchHeaderSource(): void {
         return;
     }
 
-    let rootPath: string = clients.ActiveClient.RootPath;
+    let rootPath: string = workspace.ActiveWorkspaceFolder.RootPath;
     let fileName: string = activeEditor.document.fileName;
 
     if (!rootPath) {
         rootPath = path.dirname(fileName); // When switching without a folder open.
     }
 
-    clients.ActiveClient.requestSwitchHeaderSource(rootPath, fileName).then((targetFileName: string) => {
+    workspace.ActiveWorkspaceFolder.requestSwitchHeaderSource(rootPath, fileName).then((targetFileName: string) => {
         vscode.workspace.openTextDocument(targetFileName).then((document: vscode.TextDocument) => {
             let foundEditor: boolean = false;
             // If the document is already visible in another column, open it there.
@@ -928,31 +928,31 @@ function onSwitchHeaderSource(): void {
 }
 
 /**
- * Allow the user to select a workspace when multiple workspaces exist and get the corresponding Client back.
- * The resulting client is used to handle some command that was previously invoked.
+ * Allow the user to select a workspace when multiple workspaces exist and get the corresponding WorkspaceFolder back.
+ * The resulting WorkspaceFolder is used to handle some command that was previously invoked.
  */
-function selectClient(): Thenable<Client> {
-    if (clients.Count === 1) {
-        return Promise.resolve(clients.ActiveClient);
+function selectWorkspaceFolder(): Thenable<WorkspaceFolder> {
+    if (workspace.Count === 1) {
+        return Promise.resolve(workspace.ActiveWorkspaceFolder);
     } else {
-        return ui.showWorkspaces(clients.Names).then(key => {
+        return ui.showWorkspaces(workspace.Names).then(key => {
             if (key !== "") {
-                let client: Client = clients.get(key);
-                if (client) {
-                    return client;
+                let workspaceFolder: WorkspaceFolder = workspace.get(key);
+                if (workspaceFolder) {
+                    return workspaceFolder;
                 } else {
-                    console.assert("client not found");
+                    console.assert("WorkspaceFolder not found");
                 }
             }
-            return Promise.reject<Client>(localize("client.not.found", "client not found"));
+            return Promise.reject<WorkspaceFolder>(localize("client.not.found", "WorkspaceFolder not found"));
         });
     }
 }
 
 function onResetDatabase(): void {
     onActivationEvent();
-    /* need to notify the affected client(s) */
-    selectClient().then(client => client.resetDatabase(), rejected => {});
+    /* need to notify the affected WorkspaceFolder(s) */
+    selectWorkspaceFolder().then(workspaceFolder => workspaceFolder.resetDatabase(), rejected => {});
 }
 
 function onSelectConfiguration(): void {
@@ -960,9 +960,9 @@ function onSelectConfiguration(): void {
     if (!isFolderOpen()) {
         vscode.window.showInformationMessage(localize("configuration.select.first", 'Open a folder first to select a configuration'));
     } else {
-        // This only applies to the active client. You cannot change the configuration for
-        // a client that is not active since that client's UI will not be visible.
-        clients.ActiveClient.handleConfigurationSelectCommand();
+        // This only applies to the active WorkspaceFolder. You cannot change the configuration for
+        // a WorkspaceFolder that is not active since that WorkspaceFolder's UI will not be visible.
+        workspace.ActiveWorkspaceFolder.handleConfigurationSelectCommand();
     }
 }
 
@@ -971,7 +971,7 @@ function onSelectConfigurationProvider(): void {
     if (!isFolderOpen()) {
         vscode.window.showInformationMessage(localize("configuration.provider.select.first", 'Open a folder first to select a configuration provider'));
     } else {
-        selectClient().then(client => client.handleConfigurationProviderSelectCommand(), rejected => {});
+        selectWorkspaceFolder().then(workspaceFolder => workspaceFolder.handleConfigurationProviderSelectCommand(), rejected => {});
     }
 }
 
@@ -981,7 +981,7 @@ function onEditConfigurationJSON(): void {
     if (!isFolderOpen()) {
         vscode.window.showInformationMessage(localize('edit.configurations.open.first', 'Open a folder first to edit configurations'));
     } else {
-        selectClient().then(client => client.handleConfigurationEditJSONCommand(), rejected => {});
+        selectWorkspaceFolder().then(workspaceFolder => workspaceFolder.handleConfigurationEditJSONCommand(), rejected => {});
     }
 }
 
@@ -991,7 +991,7 @@ function onEditConfigurationUI(): void {
     if (!isFolderOpen()) {
         vscode.window.showInformationMessage(localize('edit.configurations.open.first', 'Open a folder first to edit configurations'));
     } else {
-        selectClient().then(client => client.handleConfigurationEditUICommand(), rejected => {});
+        selectWorkspaceFolder().then(workspaceFolder => workspaceFolder.handleConfigurationEditUICommand(), rejected => {});
     }
 }
 
@@ -1000,7 +1000,7 @@ function onEditConfiguration(): void {
     if (!isFolderOpen()) {
         vscode.window.showInformationMessage(localize('edit.configurations.open.first', 'Open a folder first to edit configurations'));
     } else {
-        selectClient().then(client => client.handleConfigurationEditCommand(), rejected => {});
+        selectWorkspaceFolder().then(workspaceFolder => workspaceFolder.handleConfigurationEditCommand(), rejected => {});
     }
 }
 
@@ -1008,64 +1008,64 @@ function onAddToIncludePath(path: string): void {
     if (!isFolderOpen()) {
         vscode.window.showInformationMessage(localize('add.includepath.open.first', 'Open a folder first to add to {0}', "includePath"));
     } else {
-        // This only applies to the active client. It would not make sense to add the include path
+        // This only applies to the active WorkspaceFolder. It would not make sense to add the include path
         // suggestion to a different workspace.
-        clients.ActiveClient.handleAddToIncludePathCommand(path);
+        workspace.ActiveWorkspaceFolder.handleAddToIncludePathCommand(path);
     }
 }
 
 function onEnableSquiggles(): void {
     onActivationEvent();
-    // This only applies to the active client.
-    let settings: CppSettings = new CppSettings(clients.ActiveClient.RootUri);
+    // This only applies to the active WorkspaceFolder.
+    let settings: CppSettings = new CppSettings(workspace.ActiveWorkspaceFolder.RootUri);
     settings.update<string>("errorSquiggles", "Enabled");
 }
 
 function onDisableSquiggles(): void {
     onActivationEvent();
-    // This only applies to the active client.
-    let settings: CppSettings = new CppSettings(clients.ActiveClient.RootUri);
+    // This only applies to the active WorkspaceFolder.
+    let settings: CppSettings = new CppSettings(workspace.ActiveWorkspaceFolder.RootUri);
     settings.update<string>("errorSquiggles", "Disabled");
 }
 
 function onToggleIncludeFallback(): void {
     onActivationEvent();
-    // This only applies to the active client.
-    let settings: CppSettings = new CppSettings(clients.ActiveClient.RootUri);
+    // This only applies to the active WorkspaceFolder.
+    let settings: CppSettings = new CppSettings(workspace.ActiveWorkspaceFolder.RootUri);
     settings.toggleSetting("intelliSenseEngineFallback", "Enabled", "Disabled");
 }
 
 function onToggleDimInactiveRegions(): void {
     onActivationEvent();
-    // This only applies to the active client.
-    let settings: CppSettings = new CppSettings(clients.ActiveClient.RootUri);
+    // This only applies to the active WorkspaceFolder.
+    let settings: CppSettings = new CppSettings(workspace.ActiveWorkspaceFolder.RootUri);
     settings.update<boolean>("dimInactiveRegions", !settings.dimInactiveRegions);
 }
 
 function onPauseParsing(): void {
     onActivationEvent();
-    selectClient().then(client => client.pauseParsing(), rejected => {});
+    selectWorkspaceFolder().then(workspaceFolder => workspaceFolder.pauseParsing(), rejected => {});
 }
 
 function onResumeParsing(): void {
     onActivationEvent();
-    selectClient().then(client => client.resumeParsing(), rejected => {});
+    selectWorkspaceFolder().then(workspaceFolder => workspaceFolder.resumeParsing(), rejected => {});
 }
 
 function onShowParsingCommands(): void {
     onActivationEvent();
-    selectClient().then(client => client.handleShowParsingCommands(), rejected => {});
+    selectWorkspaceFolder().then(workspaceFolder => workspaceFolder.handleShowParsingCommands(), rejected => {});
 }
 
 function onShowReferencesProgress(): void {
     onActivationEvent();
-    selectClient().then(client => client.handleReferencesIcon(), rejected => {});
+    selectWorkspaceFolder().then(workspaceFolder => workspaceFolder.handleReferencesIcon(), rejected => {});
 }
 
 function onToggleRefGroupView(): void {
     // Set context to switch icons
-    let client: Client = getActiveClient();
-    client.toggleReferenceResultsView();
+    let workspaceFolder: WorkspaceFolder = getActiveWorkspaceFolder();
+    workspaceFolder.toggleReferenceResultsView();
 }
 
 function onTakeSurvey(): void {
@@ -1137,17 +1137,17 @@ async function onVcpkgClipboardInstallSuggested(ports?: string[]): Promise<void>
 }
 
 function onGetActiveConfigName(): Thenable<string> {
-    return clients.ActiveClient.getCurrentConfigName();
+    return workspace.ActiveWorkspaceFolder.getCurrentConfigName();
 }
 
 function onLogDiagnostics(): void {
     onActivationEvent();
-    clients.ActiveClient.logDiagnostics();
+    workspace.ActiveWorkspaceFolder.logDiagnostics();
 }
 
 function onRescanWorkspace(): void {
     onActivationEvent();
-    clients.forEach(client => client.rescanFolder());
+    workspace.forEach(workspaceFolder => workspaceFolder.rescanFolder());
 }
 
 function onShowRefCommand(arg?: TreeNode): void {
@@ -1349,23 +1349,23 @@ export function deactivate(): Thenable<void> {
     if (codeActionProvider) {
         codeActionProvider.dispose();
     }
-    return clients.dispose();
+    return workspace.dispose();
 }
 
 export function isFolderOpen(): boolean {
     return vscode.workspace.workspaceFolders !== undefined && vscode.workspace.workspaceFolders.length > 0;
 }
 
-export function getClients(): ClientCollection {
+export function getWorkspace(): Workspace {
     if (!realActivationOccurred) {
         realActivation();
     }
-    return clients;
+    return workspace;
 }
 
-export function getActiveClient(): Client {
+export function getActiveWorkspaceFolder(): WorkspaceFolder {
     if (!realActivationOccurred) {
         realActivation();
     }
-    return clients.ActiveClient;
+    return workspace.ActiveWorkspaceFolder;
 }

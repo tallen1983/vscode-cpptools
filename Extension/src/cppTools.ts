@@ -60,7 +60,7 @@ export class CppTools implements CppToolsTestApi {
             let added: CustomConfigurationProvider1 = providers.get(provider);
             getOutputChannel().appendLine(localize("provider.registered", "Custom configuration provider '{0}' registered", added.name));
             this.providers.push(added);
-            LanguageServer.getClients().forEach(client => client.onRegisterCustomConfigurationProvider(added));
+            LanguageServer.getWorkspace().forEach(workspaceFolder => workspaceFolder.onRegisterCustomConfigurationProvider(added));
             this.addNotifyReadyTimer(added);
         } else {
             this.failedRegistrations.push(provider);
@@ -74,9 +74,9 @@ export class CppTools implements CppToolsTestApi {
         if (p) {
             this.removeNotifyReadyTimer(p);
             p.isReady = true;
-            LanguageServer.getClients().forEach(client => {
-                client.updateCustomConfigurations(p);
-                client.updateCustomBrowseConfiguration(p);
+            LanguageServer.getWorkspace().forEach(workspaceFolder => {
+                workspaceFolder.updateCustomConfigurations(p);
+                workspaceFolder.updateCustomBrowseConfiguration(p);
             });
         } else if (this.failedRegistrations.find(p => p === provider)) {
             console.warn("provider not successfully registered; 'notifyReady' ignored");
@@ -93,7 +93,7 @@ export class CppTools implements CppToolsTestApi {
             if (!p.isReady) {
                 console.warn("didChangeCustomConfiguration was invoked before notifyReady");
             }
-            LanguageServer.getClients().forEach(client => client.updateCustomConfigurations(p));
+            LanguageServer.getWorkspace().forEach(workspaceFolder => workspaceFolder.updateCustomConfigurations(p));
         } else if (this.failedRegistrations.find(p => p === provider)) {
             console.warn("provider not successfully registered, 'didChangeCustomConfiguration' ignored");
         } else {
@@ -106,7 +106,7 @@ export class CppTools implements CppToolsTestApi {
         let p: CustomConfigurationProvider1 = providers.get(provider);
 
         if (p) {
-            LanguageServer.getClients().forEach(client => client.updateCustomBrowseConfiguration(p));
+            LanguageServer.getWorkspace().forEach(workspaceFolder => workspaceFolder.updateCustomBrowseConfiguration(p));
         } else if (this.failedRegistrations.find(p => p === provider)) {
             console.warn("provider not successfully registered, 'didChangeCustomBrowseConfiguration' ignored");
         } else {

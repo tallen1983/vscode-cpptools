@@ -6,24 +6,24 @@
 
 import * as path from 'path';
 import { Middleware } from 'vscode-languageclient';
-import { ClientCollection } from './clientCollection';
-import { Client } from './client';
+import { Workspace } from './workspace';
+import { WorkspaceFolder } from './workspaceFolder';
 import { CppSettings } from './settings';
 
-export function createProtocolFilter(me: Client, clients: ClientCollection): Middleware {
+export function createProtocolFilter(me: WorkspaceFolder, workspace: Workspace): Middleware {
     // Disabling lint for invoke handlers
     /* tslint:disable */
-    let defaultHandler: (data: any, callback: (data: any) => void) => void = (data, callback: (data) => void) => { if (clients.ActiveClient === me) {me.notifyWhenReady(() => callback(data));}};
-    // let invoke1 = (a, callback: (a) => any) => { if (clients.ActiveClient === me) { return me.requestWhenReady(() => callback(a)); } return null; };
-    let invoke2 = (a, b, callback: (a, b) => any) => { if (clients.ActiveClient === me) { return me.requestWhenReady(() => callback(a, b)); } return null; };
-    let invoke3 = (a, b, c, callback: (a, b, c) => any) => { if (clients.ActiveClient === me)  { return me.requestWhenReady(() => callback(a, b, c)); } return null; };
-    let invoke4 = (a, b, c, d, callback: (a, b, c, d) => any) => { if (clients.ActiveClient === me)  { return me.requestWhenReady(() => callback(a, b, c, d)); } return null; };
-    let invoke5 = (a, b, c, d, e, callback: (a, b, c, d, e) => any) => { if (clients.ActiveClient === me)  { return me.requestWhenReady(() => callback(a, b, c, d, e)); } return null; };
+    let defaultHandler: (data: any, callback: (data: any) => void) => void = (data, callback: (data) => void) => { if (workspace.ActiveWorkspaceFolder === me) {me.notifyWhenReady(() => callback(data));}};
+    // let invoke1 = (a, callback: (a) => any) => { if (workspace.ActiveWorkspaceFolder === me) { return me.requestWhenReady(() => callback(a)); } return null; };
+    let invoke2 = (a, b, callback: (a, b) => any) => { if (workspace.ActiveWorkspaceFolder === me) { return me.requestWhenReady(() => callback(a, b)); } return null; };
+    let invoke3 = (a, b, c, callback: (a, b, c) => any) => { if (workspace.ActiveWorkspaceFolder === me)  { return me.requestWhenReady(() => callback(a, b, c)); } return null; };
+    let invoke4 = (a, b, c, d, callback: (a, b, c, d) => any) => { if (workspace.ActiveWorkspaceFolder === me)  { return me.requestWhenReady(() => callback(a, b, c, d)); } return null; };
+    let invoke5 = (a, b, c, d, e, callback: (a, b, c, d, e) => any) => { if (workspace.ActiveWorkspaceFolder === me)  { return me.requestWhenReady(() => callback(a, b, c, d, e)); } return null; };
     /* tslint:enable */
 
     return {
         didOpen: (document, sendMessage) => {
-            if (clients.checkOwnership(me, document)) {
+            if (workspace.checkOwnership(me, document)) {
                 me.TrackedDocuments.add(document);
 
                 // Work around vscode treating ".C" as c, by adding this file name to file associations as cpp
@@ -44,21 +44,21 @@ export function createProtocolFilter(me: Client, clients: ClientCollection): Mid
             }
         },
         didChange: (textDocumentChangeEvent, sendMessage) => {
-            if (clients.ActiveClient === me) {
+            if (workspace.ActiveWorkspaceFolder === me) {
                 me.onDidChangeTextDocument(textDocumentChangeEvent);
                 me.notifyWhenReady(() => sendMessage(textDocumentChangeEvent));
             }
         },
         willSave: defaultHandler,
         willSaveWaitUntil: (event, sendMessage) => {
-            if (clients.ActiveClient === me) {
+            if (workspace.ActiveWorkspaceFolder === me) {
                 return me.requestWhenReady(() => sendMessage(event));
             }
             return Promise.resolve([]);
         },
         didSave: defaultHandler,
         didClose: (document, sendMessage) => {
-            if (clients.ActiveClient === me) {
+            if (workspace.ActiveWorkspaceFolder === me) {
                 console.assert(me.TrackedDocuments.has(document));
                 me.onDidCloseTextDocument(document);
                 me.TrackedDocuments.delete(document);
@@ -69,7 +69,7 @@ export function createProtocolFilter(me: Client, clients: ClientCollection): Mid
         provideCompletionItem: invoke4,
         resolveCompletionItem: invoke2,
         provideHover: (document, position, token, next: (document, position, token) => any) => {
-            if (clients.checkOwnership(me, document)) {
+            if (workspace.checkOwnership(me, document)) {
                 return me.requestWhenReady(() => next(document, position, token));
             }
             return null;
