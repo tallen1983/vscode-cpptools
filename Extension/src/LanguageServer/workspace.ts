@@ -8,7 +8,6 @@ import * as vscode from 'vscode';
 import * as util from '../common';
 import * as telemetry from '../telemetry';
 import * as cpptools from './workspaceFolder';
-import * as path from 'path';
 import { getCustomConfigProviders } from './customProviders';
 
 const rootWorkspaceFolderKey: string = "@@workspace@@";
@@ -20,7 +19,7 @@ export interface WorkspaceFolderKey {
 export class Workspace {
     private disposables: vscode.Disposable[] = [];
     private workspaceFolders = new Map<string, cpptools.WorkspaceFolder>();
-    private rootWorkspaceFolder: cpptools.WorkspaceFolder; // For files not associated with any WorkspaceFolder.
+    private externalWorkspaceFolder: cpptools.WorkspaceFolder; // For files not associated with any WorkspaceFolder.
     private activeWorkspaceFolder: cpptools.WorkspaceFolder;
     private activeDocument: vscode.TextDocument;
 
@@ -35,9 +34,9 @@ export class Workspace {
     public get Count(): number { return this.workspaceFolders.size; }
 
     constructor() {
-        this.rootWorkspaceFolder = cpptools.createWorkspaceFolder(this);
-        this.activeWorkspaceFolder = this.rootWorkspaceFolder;
-        this.workspaceFolders.set(rootWorkspaceFolderKey, this.rootWorkspaceFolder);
+        this.externalWorkspaceFolder = cpptools.createWorkspaceFolder(this);
+        this.activeWorkspaceFolder = this.externalWorkspaceFolder;
+        this.workspaceFolders.set(rootWorkspaceFolderKey, this.externalWorkspaceFolder);
         for (let workspaceFolder of vscode.workspace.workspaceFolders) {
             this.workspaceFolders.set(util.asFolder(workspaceFolder.uri), cpptools.createWorkspaceFolder(this, workspaceFolder));
         }
@@ -78,17 +77,9 @@ export class Workspace {
     }
 
     public checkOwnership(workspaceFolder: cpptools.WorkspaceFolder, document: vscode.TextDocument): boolean {
-        let owner: cpptools.WorkspaceFolder;
-        let maxPathLength: number = 0;
-        this.workspaceFolders.forEach(workspaceFolder => {
-            if (document.uri.fsPath.startsWith(workspaceFolder.RootPath + path.sep)) {
-                if (workspaceFolder.RootPath.length > maxPathLength) {
-                    owner = workspaceFolder;
-                    maxPathLength = workspaceFolder.RootPath.length;
-                }
-            }
-        });
-        return owner === workspaceFolder;
+        let vsWorkspaceFolder: vscode.WorkspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+        return (!workspaceFolder.RootUri && !vsWorkspaceFolder) ||
+            (vsWorkspaceFolder && (workspaceFolder.RootUri === vsWorkspaceFolder.uri));
     }
 
     /**
@@ -180,7 +171,7 @@ export class Workspace {
     private getWorkspaceFolderFor(uri: vscode.Uri): cpptools.WorkspaceFolder {
         let folder: vscode.WorkspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
         if (!folder) {
-            return this.rootWorkspaceFolder;
+            return this.externalWorkspaceFolder;
         } else {
             let key: string = util.asFolder(folder.uri);
             if (!this.workspaceFolders.has(key)) {
@@ -200,7 +191,7 @@ export class Workspace {
         let promises: Thenable<void>[] = [];
 
         // this.rootWorkspaceFolder is already in this.workspaceFolders, so do not call dispose() on it.
-        this.rootWorkspaceFolder = undefined;
+        this.externalWorkspaceFolder = undefined;
 
         this.workspaceFolders.forEach(workspaceFolder => promises.push(workspaceFolder.dispose()));
         this.workspaceFolders.clear();

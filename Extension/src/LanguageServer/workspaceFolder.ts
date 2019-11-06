@@ -894,7 +894,6 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
         let settings_dimInactiveRegions: boolean[] = [];
         let settings_enhancedColorization: boolean[] = [];
         let settings_suggestSnippets: boolean[] = [];
-        let settings_workspaceSymbols: string[] = [];
         let settings_exclusionPolicy: string[] = [];
         let settings_preferredPathSeparator: string[] = [];
         let settings_defaultSystemIncludePath: string[][] = [];
@@ -923,7 +922,6 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
                 settings_dimInactiveRegions.push(setting.dimInactiveRegions);
                 settings_enhancedColorization.push(setting.enhancedColorization);
                 settings_suggestSnippets.push(setting.suggestSnippets);
-                settings_workspaceSymbols.push(setting.workspaceSymbols);
                 settings_exclusionPolicy.push(setting.exclusionPolicy);
                 settings_preferredPathSeparator.push(setting.preferredPathSeparator);
                 settings_defaultSystemIncludePath.push(setting.defaultSystemIncludePath);
@@ -975,7 +973,7 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
                 suggestSnippets: settings_suggestSnippets,
                 loggingLevel: workspaceSettings.loggingLevel,
                 workspaceParsingPriority: workspaceSettings.workspaceParsingPriority,
-                workspaceSymbols: settings_workspaceSymbols,
+                workspaceSymbols: workspaceSettings.workspaceSymbols,
                 exclusionPolicy: settings_exclusionPolicy,
                 preferredPathSeparator: settings_preferredPathSeparator,
                 default: {
