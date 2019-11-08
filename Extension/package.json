@@ -254,7 +254,7 @@
           ],
           "default": "Just My Code",
           "description": "%c_cpp.configuration.workspaceSymbols.description%",
-          "scope": "resource"
+          "scope": "window"
         },
         "C_Cpp.exclusionPolicy": {
           "type": "string",
