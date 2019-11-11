@@ -58,6 +58,7 @@ export class CppSettings extends Settings {
     public get preferredPathSeparator(): string { return super.Section.get<string>("preferredPathSeparator"); }
     public get updateChannel(): string { return super.Section.get<string>("updateChannel"); }
     public get vcpkgEnabled(): boolean { return super.Section.get<boolean>("vcpkg.enabled"); }
+    public get renameRequiresIdentifier(): boolean { return super.Section.get<boolean>("renameRequiresIdentifier"); }
     public get defaultIncludePath(): string[] { return super.Section.get<string[]>("default.includePath"); }
     public get defaultDefines(): string[] { return super.Section.get<string[]>("default.defines"); }
     public get defaultMacFrameworkPath(): string[] { return super.Section.get<string[]>("default.macFrameworkPath"); }
