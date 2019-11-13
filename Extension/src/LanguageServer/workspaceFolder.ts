@@ -213,6 +213,7 @@ export interface FindAllReferencesParams {
 
 interface DidChangeConfigurationParams {
     settings: any;
+    uri: string;
 }
 
 // Requests
@@ -1042,7 +1043,7 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
             search: { exclude: vscode.workspace.getConfiguration("search", this.RootUri).get("exclude") },
             tab_size: { tabSize: vscode.workspace.getConfiguration("editor", this.RootUri).get("tabSize") }
         };
-        this.languageClient.sendNotification(SettingsChangedNotification, { settings: settingsChanged });
+        this.languageClient.sendNotification(SettingsChangedNotification, { settings: settingsChanged, uri: this.RootPath });
 
         let colorizationNeedsReload: boolean = event.affectsConfiguration("workbench.colorTheme")
             || event.affectsConfiguration("editor.tokenColorCustomizations");
