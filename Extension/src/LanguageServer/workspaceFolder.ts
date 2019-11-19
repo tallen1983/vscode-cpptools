@@ -891,8 +891,6 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
         let settings_editorTabSize: number[] = [];
         let settings_intelliSenseEngine: string[] = [];
         let settings_intelliSenseEngineFallback: string[] = [];
-        let settings_intelliSenseCachePath: string[] = [];
-        let settings_intelliSenseCacheSize: number[] = [];
         let settings_errorSquiggles: string[] = [];
         let settings_dimInactiveRegions: boolean[] = [];
         let settings_enhancedColorization: boolean[] = [];
@@ -919,8 +917,6 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
                 settings_clangFormatSortIncludes.push(setting.clangFormatSortIncludes);
                 settings_intelliSenseEngine.push(setting.intelliSenseEngine);
                 settings_intelliSenseEngineFallback.push(setting.intelliSenseEngineFallback);
-                settings_intelliSenseCachePath.push(util.resolveCachePath(setting.intelliSenseCachePath, this.AdditionalEnvironment));
-                settings_intelliSenseCacheSize.push(setting.intelliSenseCacheSize);
                 settings_errorSquiggles.push(setting.errorSquiggles);
                 settings_dimInactiveRegions.push(setting.dimInactiveRegions);
                 settings_enhancedColorization.push(setting.enhancedColorization);
@@ -967,8 +963,8 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
                 intelliSenseEngine: settings_intelliSenseEngine,
                 intelliSenseEngineFallback: settings_intelliSenseEngineFallback,
                 intelliSenseCacheDisabled: intelliSenseCacheDisabled,
-                intelliSenseCachePath: settings_intelliSenseCachePath,
-                intelliSenseCacheSize: settings_intelliSenseCacheSize,
+                intelliSenseCachePath: util.resolveCachePath(workspaceSettings.intelliSenseCachePath, this.AdditionalEnvironment),
+                intelliSenseCacheSize: workspaceSettings.intelliSenseCacheSize,
                 autocomplete: workspaceSettings.autoComplete,
                 errorSquiggles: settings_errorSquiggles,
                 dimInactiveRegions: settings_dimInactiveRegions,
@@ -1091,7 +1087,7 @@ export class DefaultWorkspaceFolder implements WorkspaceFolder {
                 this.languageClient.sendNotification(UpdateClangFormatPathNotification, util.resolveVariables(settings.clangFormatPath, this.AdditionalEnvironment));
             }
             if (changedSettings["intelliSenseCachePath"]) {
-                let settings: CppSettings = new CppSettings(this.RootUri);
+                let settings: CppSettings = new CppSettings();
                 this.languageClient.sendNotification(UpdateIntelliSenseCachePathNotification, util.resolveCachePath(settings.intelliSenseCachePath, this.AdditionalEnvironment));
             }
             this.configuration.onDidChangeSettings();

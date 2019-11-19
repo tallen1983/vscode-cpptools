@@ -319,13 +319,13 @@
           "type": "string",
           "default": null,
           "description": "%c_cpp.configuration.intelliSenseCachePath.description%",
-          "scope": "resource"
+          "scope": "window"
         },
         "C_Cpp.intelliSenseCacheSize": {
           "type": "number",
           "default": 5120,
           "description": "%c_cpp.configuration.intelliSenseCacheSize.description%",
-          "scope": "resource",
+          "scope": "window",
           "minimum": 0
         },
         "C_Cpp.default.includePath": {
