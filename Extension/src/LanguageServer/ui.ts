@@ -5,7 +5,7 @@
 'use strict';
 
 import * as vscode from 'vscode';
-import { WorkspaceFolder } from './workspaceFolder';
+import { Client } from './client';
 import { ReferencesCommandMode, referencesCommandModeToString } from './references';
 import { getCustomConfigProviders, CustomConfigurationProviderCollection } from './customProviders';
 import * as nls from 'vscode-nls';
@@ -164,7 +164,7 @@ export class UI {
         this.ShowConfiguration = isCpp || isSettingsJson;
     }
 
-    public bind(workspaceFolder: WorkspaceFolder): void {
+    public bind(workspaceFolder: Client): void {
         workspaceFolder.TagParsingChanged(value => { this.IsTagParsing = value; });
         workspaceFolder.IntelliSenseParsingChanged(value => { this.IsUpdatingIntelliSense = value; });
         workspaceFolder.ReferencesCommandModeChanged(value => { this.ReferencesCommand = value; });

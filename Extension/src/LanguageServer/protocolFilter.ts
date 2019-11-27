@@ -7,10 +7,10 @@
 import * as path from 'path';
 import { Middleware } from 'vscode-languageclient';
 import { Workspace } from './workspace';
-import { WorkspaceFolder } from './workspaceFolder';
+import { Client } from './client';
 import { CppSettings } from './settings';
 
-export function createProtocolFilter(me: WorkspaceFolder, workspace: Workspace): Middleware {
+export function createProtocolFilter(me: Client, workspace: Workspace): Middleware {
     // Disabling lint for invoke handlers
     /* tslint:disable */
     let defaultHandler: (data: any, callback: (data: any) => void) => void = (data, callback: (data) => void) => { if (workspace.ActiveWorkspaceFolder === me) {me.notifyWhenReady(() => callback(data));}};

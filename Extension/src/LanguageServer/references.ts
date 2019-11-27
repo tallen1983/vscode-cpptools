@@ -4,7 +4,7 @@
  * ------------------------------------------------------------------------------------------ */
 'use strict';
 import * as vscode from 'vscode';
-import { DefaultWorkspaceFolder, RenameParams, FindAllReferencesParams } from './workspaceFolder';
+import { DefaultClient, RenameParams, FindAllReferencesParams } from './client';
 import { FindAllRefsView } from './referencesView';
 import * as telemetry from '../telemetry';
 import * as nls from 'vscode-nls';
@@ -122,7 +122,7 @@ export function getReferenceTagString(referenceType: ReferenceType, referenceCan
 }
 
 export class ReferencesManager {
-    private workspaceFolder: DefaultWorkspaceFolder;
+    private workspaceFolder: DefaultClient;
     private disposables: vscode.Disposable[] = [];
 
     private referencesChannel: vscode.OutputChannel;
@@ -161,7 +161,7 @@ export class ReferencesManager {
     private currentUpdateProgressResolve: () => void;
     public groupByFile: PersistentState<boolean> = new PersistentState<boolean>("CPP.referencesGroupByFile", false);
 
-    constructor(workspaceFolder: DefaultWorkspaceFolder) {
+    constructor(workspaceFolder: DefaultClient) {
         this.workspaceFolder = workspaceFolder;
     }
 

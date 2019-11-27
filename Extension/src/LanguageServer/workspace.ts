@@ -7,23 +7,26 @@
 import * as vscode from 'vscode';
 import * as util from '../common';
 import * as telemetry from '../telemetry';
-import * as cpptools from './workspaceFolder';
+import * as cpptools from './client';
 import { getCustomConfigProviders } from './customProviders';
+import { WorkspaceFolder } from './workspaceFolder';
 
-const rootWorkspaceFolderKey: string = "@@workspace@@";
+const externalWorkspaceFolderKey: string = "@@external@@";
 export interface WorkspaceFolderKey {
     name: string;
     key: string;
 }
 
 export class Workspace {
+    private client: cpptools.Client;
     private disposables: vscode.Disposable[] = [];
-    private workspaceFolders = new Map<string, cpptools.WorkspaceFolder>();
-    private externalWorkspaceFolder: cpptools.WorkspaceFolder; // For files not associated with any WorkspaceFolder.
-    private activeWorkspaceFolder: cpptools.WorkspaceFolder;
+    private workspaceFolders = new Map<string, WorkspaceFolder>();
+    private externalWorkspaceFolder: WorkspaceFolder; // For files not associated with any WorkspaceFolder.
+    private firstWorkspaceFolder: WorkspaceFolder; // WorkspaceFolder with the lowest index.
+    private activeWorkspaceFolder: WorkspaceFolder;
     private activeDocument: vscode.TextDocument;
 
-    public get ActiveWorkspaceFolder(): cpptools.WorkspaceFolder { return this.activeWorkspaceFolder; }
+    public get ActiveWorkspaceFolder(): WorkspaceFolder { return this.activeWorkspaceFolder; }
     public get Names(): WorkspaceFolderKey[] {
         let result: WorkspaceFolderKey[] = [];
         this.workspaceFolders.forEach((workspaceFolder, key) => {
@@ -34,21 +37,30 @@ export class Workspace {
     public get Count(): number { return this.workspaceFolders.size; }
 
     constructor() {
-        this.externalWorkspaceFolder = cpptools.createWorkspaceFolder(this);
-        this.activeWorkspaceFolder = this.externalWorkspaceFolder;
-        this.workspaceFolders.set(rootWorkspaceFolderKey, this.externalWorkspaceFolder);
-        for (let workspaceFolder of vscode.workspace.workspaceFolders) {
-            this.workspaceFolders.set(util.asFolder(workspaceFolder.uri), cpptools.createWorkspaceFolder(this, workspaceFolder));
+        this.externalWorkspaceFolder = new WorkspaceFolder();
+        this.workspaceFolders.set(externalWorkspaceFolderKey, this.externalWorkspaceFolder);
+        if (vscode.workspace.workspaceFolders) {
+            for (let i: number = 0; i < vscode.workspace.workspaceFolders.length; ++i) {
+                let vsWorkspaceFolder: vscode.WorkspaceFolder = vscode.workspace.workspaceFolders[i];
+                let curWorkspaceFolder: WorkspaceFolder = new WorkspaceFolder(vsWorkspaceFolder);
+                this.workspaceFolders.set(util.asFolder(vsWorkspaceFolder.uri), curWorkspaceFolder);
+                if (i === 0) {
+                    this.firstWorkspaceFolder = curWorkspaceFolder;
+                }
+            }
+        } else {
+            this.firstWorkspaceFolder = this.externalWorkspaceFolder;
         }
+        this.activeWorkspaceFolder = this.firstWorkspaceFolder;
 
         this.disposables.push(vscode.workspace.onDidChangeWorkspaceFolders(e => this.onDidChangeWorkspaceFolders(e)));
         this.disposables.push(vscode.workspace.onDidOpenTextDocument(d => this.onDidOpenTextDocument(d)));
-        this.disposables.push(vscode.workspace.onDidCloseTextDocument(d => this.onDidCloseTextDocument(d)));
+        this.client = cpptools.createClient(this);
     }
 
     public activeDocumentChanged(document: vscode.TextDocument): void {
         this.activeDocument = document;
-        let activeWorkspaceFolder: cpptools.WorkspaceFolder = this.getWorkspaceFolderFor(document.uri);
+        let activeWorkspaceFolder: cpptools.Client = this.getWorkspaceFolderFor(document.uri);
 
         // Notify the active WorkspaceFolder that the document has changed.
         activeWorkspaceFolder.activeDocumentChanged(document);
@@ -64,7 +76,7 @@ export class Workspace {
     /**
      * get a handle to a WorkspaceFolder. returns null if the WorkspaceFolder was not found.
      */
-    public get(key: string): cpptools.WorkspaceFolder | null {
+    public get(key: string): cpptools.Client | null {
         if (this.workspaceFolders.has(key)) {
             return this.workspaceFolders.get(key);
         }
@@ -72,23 +84,23 @@ export class Workspace {
         return null;
     }
 
-    public forEach(callback: (workspaceFolder: cpptools.WorkspaceFolder) => void): void {
+    public forEach(callback: (workspaceFolder: cpptools.Client) => void): void {
         this.workspaceFolders.forEach(callback);
     }
 
-    public checkOwnership(workspaceFolder: cpptools.WorkspaceFolder, document: vscode.TextDocument): boolean {
+    public checkOwnership(workspaceFolder: cpptools.Client, document: vscode.TextDocument): boolean {
         let vsWorkspaceFolder: vscode.WorkspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
         return (!workspaceFolder.RootUri && !vsWorkspaceFolder) ||
             (vsWorkspaceFolder && (workspaceFolder.RootUri === vsWorkspaceFolder.uri));
     }
 
     /**
-     * creates a new WorkspaceFolder to replace one that crashed.
+     * creates a new Client to replace one that crashed.
      */
-    public replace(workspaceFolder: cpptools.WorkspaceFolder, transferFileOwnership: boolean): cpptools.WorkspaceFolder {
+    public replace(client: cpptools.Client, transferFileOwnership: boolean): cpptools.Client {
         let key: string;
         for (let pair of this.workspaceFolders) {
-            if (pair[1] === workspaceFolder) {
+            if (pair[1] === client) {
                 key = pair[0];
                 break;
             }
@@ -99,19 +111,19 @@ export class Workspace {
 
             if (transferFileOwnership) {
                 // This will create a new WorkspaceFolder since we removed the old one from this.workspaceFolders.
-                workspaceFolder.TrackedDocuments.forEach(document => this.transferOwnership(document, workspaceFolder));
-                workspaceFolder.TrackedDocuments.clear();
+                client.TrackedDocuments.forEach(document => this.transferOwnership(document, client));
+                client.TrackedDocuments.clear();
             } else {
                 // Create an empty WorkspaceFolder that will continue to "own" files matching this workspace, but ignore all messages from VS Code.
-                this.workspaceFolders.set(key, cpptools.createNullWorkspaceFolder());
+                this.workspaceFolders.set(key, cpptools.createNullClient());
             }
 
-            if (this.activeWorkspaceFolder === workspaceFolder && this.activeDocument) {
+            if (this.activeWorkspaceFolder === client && this.activeDocument) {
                 this.activeWorkspaceFolder = this.getWorkspaceFolderFor(this.activeDocument.uri);
                 this.activeWorkspaceFolder.activeDocumentChanged(this.activeDocument);
             }
 
-            workspaceFolder.dispose();
+            client.dispose();
             return this.workspaceFolders.get(key);
         } else {
             console.assert(key, "unable to locate WorkspaceFolder");
@@ -128,7 +140,7 @@ export class Workspace {
         if (e !== undefined) {
             e.removed.forEach(folder => {
                 let path: string = util.asFolder(folder.uri);
-                let workspaceFolder: cpptools.WorkspaceFolder = this.workspaceFolders.get(path);
+                let workspaceFolder: cpptools.Client = this.workspaceFolders.get(path);
                 if (workspaceFolder) {
                     this.workspaceFolders.delete(path);  // Do this first so that we don't iterate on it during the ownership transfer process.
 
@@ -154,8 +166,8 @@ export class Workspace {
         }
     }
 
-    private transferOwnership(document: vscode.TextDocument, oldOwner: cpptools.WorkspaceFolder): void {
-        let newOwner: cpptools.WorkspaceFolder = this.getWorkspaceFolderFor(document.uri);
+    private transferOwnership(document: vscode.TextDocument, oldOwner: cpptools.Client): void {
+        let newOwner: cpptools.Client = this.getWorkspaceFolderFor(document.uri);
         console.assert(newOwner !== oldOwner, "'oldOwner' should not be in the list of WorkspaceFolders to consider");
         newOwner.takeOwnership(document);
     }
@@ -168,23 +180,19 @@ export class Workspace {
         }
     }
 
-    private getWorkspaceFolderFor(uri: vscode.Uri): cpptools.WorkspaceFolder {
+    private getWorkspaceFolderFor(uri: vscode.Uri): cpptools.Client {
         let folder: vscode.WorkspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
         if (!folder) {
             return this.externalWorkspaceFolder;
         } else {
             let key: string = util.asFolder(folder.uri);
             if (!this.workspaceFolders.has(key)) {
-                let newWorkspaceFolder: cpptools.WorkspaceFolder = cpptools.createWorkspaceFolder(this, folder);
+                let newWorkspaceFolder: cpptools.Client = cpptools.createClient(this, folder);
                 this.workspaceFolders.set(key, newWorkspaceFolder);
                 getCustomConfigProviders().forEach(provider => newWorkspaceFolder.onRegisterCustomConfigurationProvider(provider));
             }
             return this.workspaceFolders.get(key);
         }
-    }
-
-    private onDidCloseTextDocument(document: vscode.TextDocument): void {
-        // Don't seem to need to do anything here since we clean up when the workspace is closed instead.
     }
 
     public dispose(): Thenable<void> {

@@ -12,7 +12,7 @@ import * as util from '../common';
 import * as telemetry from '../telemetry';
 import { TreeNode, NodeType, getCurrentRenameModel } from './referencesModel';
 import { UI, getUI } from './ui';
-import { WorkspaceFolder } from './workspaceFolder';
+import { Client } from './client';
 import { Workspace } from './workspace';
 import { CppSettings } from './settings';
 import { PersistentWorkspaceState, PersistentState } from './persistentState';
@@ -276,7 +276,7 @@ export async function getBuildTasks(returnCompilerPath: boolean): Promise<vscode
 
     // Get compiler paths.
     const isWindows: boolean = os.platform() === 'win32';
-    let activeWorkspaceFolder: WorkspaceFolder;
+    let activeWorkspaceFolder: Client;
     try {
         activeWorkspaceFolder = getActiveWorkspaceFolder();
     } catch (e) {
@@ -501,7 +501,7 @@ export function updateLanguageConfigurations(): void {
  *********************************************/
 
 function onDidChangeSettings(event: vscode.ConfigurationChangeEvent): void {
-    let activeWorkspaceFolder: WorkspaceFolder = workspace.ActiveWorkspaceFolder;
+    let activeWorkspaceFolder: Client = workspace.ActiveWorkspaceFolder;
     const changedActiveWorkspaceFolderSettings: { [key: string] : string } = activeWorkspaceFolder.onDidChangeSettings(event);
     workspace.forEach(workspaceFolder => {
         if (workspaceFolder !== activeWorkspaceFolder) {
@@ -931,20 +931,20 @@ function onSwitchHeaderSource(): void {
  * Allow the user to select a workspace when multiple workspaces exist and get the corresponding WorkspaceFolder back.
  * The resulting WorkspaceFolder is used to handle some command that was previously invoked.
  */
-function selectWorkspaceFolder(): Thenable<WorkspaceFolder> {
+function selectWorkspaceFolder(): Thenable<Client> {
     if (workspace.Count === 1) {
         return Promise.resolve(workspace.ActiveWorkspaceFolder);
     } else {
         return ui.showWorkspaces(workspace.Names).then(key => {
             if (key !== "") {
-                let workspaceFolder: WorkspaceFolder = workspace.get(key);
+                let workspaceFolder: Client = workspace.get(key);
                 if (workspaceFolder) {
                     return workspaceFolder;
                 } else {
                     console.assert("WorkspaceFolder not found");
                 }
             }
-            return Promise.reject<WorkspaceFolder>(localize("client.not.found", "WorkspaceFolder not found"));
+            return Promise.reject<Client>(localize("client.not.found", "WorkspaceFolder not found"));
         });
     }
 }
@@ -1064,7 +1064,7 @@ function onShowReferencesProgress(): void {
 
 function onToggleRefGroupView(): void {
     // Set context to switch icons
-    let workspaceFolder: WorkspaceFolder = getActiveWorkspaceFolder();
+    let workspaceFolder: Client = getActiveWorkspaceFolder();
     workspaceFolder.toggleReferenceResultsView();
 }
 
@@ -1147,7 +1147,7 @@ function onLogDiagnostics(): void {
 
 function onRescanWorkspace(): void {
     onActivationEvent();
-    workspace.forEach(workspaceFolder => workspaceFolder.rescanFolder());
+    workspace.ActiveWorkspaceFolder.rescanFolder();
 }
 
 function onShowRefCommand(arg?: TreeNode): void {
@@ -1356,14 +1356,14 @@ export function isFolderOpen(): boolean {
     return vscode.workspace.workspaceFolders !== undefined && vscode.workspace.workspaceFolders.length > 0;
 }
 
-export function getWorkspace(): Workspace {
+export function getWorkspace(): DeprecatedClientCollection {
     if (!realActivationOccurred) {
         realActivation();
     }
     return workspace;
 }
 
-export function getActiveWorkspaceFolder(): WorkspaceFolder {
+export function getActiveWorkspaceFolder(): Client {
     if (!realActivationOccurred) {
         realActivation();
     }
