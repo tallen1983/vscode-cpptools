@@ -60,7 +60,6 @@ export class Workspace {
         this.activeWorkspaceFolder = this.firstWorkspaceFolder;
 
         this.disposables.push(vscode.workspace.onDidChangeWorkspaceFolders(e => this.onDidChangeWorkspaceFolders(e)));
-        this.disposables.push(vscode.workspace.onDidOpenTextDocument(d => this.onDidOpenTextDocument(d)));
     }
 
     private activeDocumentChanged(document: vscode.TextDocument): void {
@@ -175,14 +174,6 @@ export class Workspace {
         let newOwner: Client.Client = this.getWorkspaceFolderFor(document.uri);
         console.assert(newOwner !== oldOwner, "'oldOwner' should not be in the list of WorkspaceFolders to consider");
         newOwner.takeOwnership(document);
-    }
-
-    private onDidOpenTextDocument(document: vscode.TextDocument): void {
-        if (document.languageId === "c" || document.languageId === "cpp"
-            || document.languageId === "json" && document.uri.fsPath.endsWith("c_cpp_properties.json")) {
-            // Make sure a WorkspaceFolder exists for this document.
-            this.getWorkspaceFolderFor(document.uri);
-        }
     }
 
     private getWorkspaceFolderFor(uri: vscode.Uri): Client.Client {

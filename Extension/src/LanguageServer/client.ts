@@ -33,6 +33,7 @@ import * as os from 'os';
 import { TokenKind, ColorizationSettings, ColorizationState } from './colorization';
 import * as refs from './references';
 import * as nls from 'vscode-nls';
+import { WorkspaceFolder } from './workspaceFolder';
 
 nls.config({ messageFormat: nls.MessageFormat.bundle, bundleFormat: nls.BundleFormat.standalone })();
 const localize: nls.LocalizeFunc = nls.loadMessageBundle();
@@ -70,6 +71,7 @@ interface CppPropertiesParams {
 
 interface FolderSelectedSettingParams {
     currentConfiguration: number;
+    workspaceFolderUri: string;
 }
 
 interface SwitchHeaderSourceParams {
@@ -314,6 +316,7 @@ export interface Client {
     onDidChangeVisibleTextEditors(editors: vscode.TextEditor[]): void;
     onDidChangeTextDocument(textDocumentChangeEvent: vscode.TextDocumentChangeEvent): void;
     onDidChangeTextEditorVisibleRanges(textEditorVisibleRangesChangeEvent: vscode.TextEditorVisibleRangesChangeEvent): void;
+    onCompileCommandsChanged(path: string, workspaceFolderPath: string): void;
     onRegisterCustomConfigurationProvider(provider: CustomConfigurationProvider1): Thenable<void>;
     updateCustomConfigurations(requestingProvider?: CustomConfigurationProvider1): Thenable<void>;
     updateCustomBrowseConfiguration(requestingProvider?: CustomConfigurationProvider1): Thenable<void>;
@@ -1987,9 +1990,10 @@ export class DefaultClient implements Client {
         });
     }
 
-    public onSelectedConfigurationChanged(index: number): void {
+    public onSelectedConfigurationChanged(index: number, workspaceFolder: string): void {
         let params: FolderSelectedSettingParams = {
-            currentConfiguration: index
+            currentConfiguration: index,
+            workspaceFolderUri: vscode.Uri.file(workspaceFolderPath).toString();
         };
         this.notifyWhenReady(() => {
             this.languageClient.sendNotification(ChangeSelectedSettingNotification, params);
@@ -2000,7 +2004,7 @@ export class DefaultClient implements Client {
 
     public onCompileCommandsChanged(path: string, workspaceFolderPath: string): void {
         let params: WorkspaceFolderFileChangedParams = {
-            fileUri: vscode.Uri.file(path).toString()
+            fileUri: vscode.Uri.file(path).toString(),
             workspaceFolderUri: vscode.Uri.file(workspaceFolderPath).toString()
         };
         this.notifyWhenReady(() => this.languageClient.sendNotification(ChangeCompileCommandsNotification, params));

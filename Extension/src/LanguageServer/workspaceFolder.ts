@@ -18,7 +18,7 @@ export class WorkspaceFolder {
 
         this.configuration = new configs.CppProperties(this.Uri);
         this.configuration.ConfigurationsChanged((e) => this.onConfigurationsChanged(e));
-        this.configuration.SelectionChanged((e) => this.onSelectedConfigurationChanged(e));
+        this.configuration.SelectionChanged((e) => this.client.onSelectedConfigurationChanged(e));
         this.configuration.CompileCommandsChanged((e) => this.client.onCompileCommandsChanged(e, this.Path));
         this.disposables.push(this.configuration);
     }
