@@ -81,6 +81,11 @@ interface FileChangedParams {
     uri: string;
 }
 
+export interface WorkspaceFolderFileChangedParams {
+    fileUri: string;
+    workspaceFolderUri: string;
+}
+
 interface SemanticColorizationRegionsParams {
     uri: string;
     regions: InputColorizationRegion[];
@@ -236,7 +241,7 @@ const ResumeParsingNotification: NotificationType<void, void> = new Notification
 const ActiveDocumentChangeNotification: NotificationType<TextDocumentIdentifier, void> = new NotificationType<TextDocumentIdentifier, void>('cpptools/activeDocumentChange');
 const TextEditorSelectionChangeNotification: NotificationType<Range, void> = new NotificationType<Range, void>('cpptools/textEditorSelectionChange');
 const ChangeCppPropertiesNotification: NotificationType<CppPropertiesParams, void> = new NotificationType<CppPropertiesParams, void>('cpptools/didChangeCppProperties');
-const ChangeCompileCommandsNotification: NotificationType<FileChangedParams, void> = new NotificationType<FileChangedParams, void>('cpptools/didChangeCompileCommands');
+const ChangeCompileCommandsNotification: NotificationType<WorkspaceFolderFileChangedParams, void> = new NotificationType<WorkspaceFolderFileChangedParams, void>('cpptools/didChangeCompileCommands');
 const ChangeSelectedSettingNotification: NotificationType<FolderSelectedSettingParams, void> = new NotificationType<FolderSelectedSettingParams, void>('cpptools/didChangeSelectedSetting');
 const IntervalTimerNotification: NotificationType<void, void> = new NotificationType<void, void>('cpptools/onIntervalTimer');
 const CustomConfigurationNotification: NotificationType<CustomConfigurationParams, void> = new NotificationType<CustomConfigurationParams, void>('cpptools/didChangeCustomConfiguration');
@@ -358,7 +363,7 @@ export class DefaultClient implements Client {
     private languageClient: LanguageClient; // The "client" that launches and communicates with our language "server" process.
     private disposables: vscode.Disposable[] = [];
     //private configuration: configs.CppProperties;
-    //private rootPathFileWatcher: vscode.FileSystemWatcher;
+    private workspaceFileWatcher: vscode.FileSystemWatcher;
     //private rootFolder: vscode.WorkspaceFolder | undefined;
     private storagePath: string;
     //private trackedDocuments = new Set<vscode.TextDocument>();
@@ -410,45 +415,20 @@ export class DefaultClient implements Client {
 
     private pendingTask: util.BlockingTask<any>;
 
-    private getUniqueWorkspaceStorageName(workspaceFolder?: vscode.WorkspaceFolder) : string {
-        let workspaceFolderName: string = this.getName(workspaceFolder);
-        if (!workspaceFolder || workspaceFolder.index < 1) {
-            return workspaceFolderName; // No duplicate names to search for.
-        }
-        for (let i: number = 0; i < workspaceFolder.index; ++i) {
-            if (vscode.workspace.workspaceFolders[i].name === workspaceFolderName) {
-                return path.join(workspaceFolderName, String(workspaceFolder.index)); // Use the index as a subfolder.
-            }
-        }
-        return workspaceFolderName; // No duplicate names found.
-    }
-
     constructor(workspace: Workspace) {
-        //this.rootFolder = workspaceFolder;
         this.storagePath = util.extensionContext ? util.extensionContext.storagePath :
-            path.join((this.rootFolder ? this.rootFolder.uri.fsPath : ""), "/.vscode");
-        if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 1) {
-            this.storagePath = path.join(this.storagePath, this.getUniqueWorkspaceStorageName(this.rootFolder));
-        }
+            path.join((workspace.FirstWorkspaceFolder ? workspace.FirstWorkspaceFolder.Path : ""), "/.vscode");
         try {
-            let rootWorkspaceFolder: boolean = !workspaceFolder;
-            if (rootWorkspaceFolder) {
-                languageClient = this.createLanguageClient(workspace);
-                languageClient.registerProposedFeatures();
-                languageClient.start();  // This returns Disposable, but doesn't need to be tracked because we call .stop() explicitly in our dispose()
-                util.setProgress(util.getProgressExecutableStarted());
-            }
+            languageClient = this.createLanguageClient(workspace);
+            languageClient.registerProposedFeatures();
+            languageClient.start(); // This returns Disposable, but doesn't need to be tracked because we call .stop() explicitly in our dispose()
+            util.setProgress(util.getProgressExecutableStarted());
             ui = getUI();
             ui.bind(this);
 
             // requests/notifications are deferred until this.languageClient is set.
             this.queueBlockingTask(() => languageClient.onReady().then(
                 () => {
-                    this.configuration = new configs.CppProperties(this.RootUri);
-                    this.configuration.ConfigurationsChanged((e) => this.onConfigurationsChanged(e));
-                    this.configuration.SelectionChanged((e) => this.onSelectedConfigurationChanged(e));
-                    this.configuration.CompileCommandsChanged((e) => this.onCompileCommandsChanged(e));
-                    this.disposables.push(this.configuration);
 
                     this.languageClient = languageClient;
                     this.settingsTracker = getTracker(this.RootUri);
@@ -856,10 +836,9 @@ export class DefaultClient implements Client {
             telemetry.logLanguageServerEvent("missingLanguageServerBinary");
             throw String('Missing binary at ' + serverModule);
         }
-        let serverName: string = this.getName(this.rootFolder);
         let serverOptions: ServerOptions = {
             run: { command: serverModule },
-            debug: { command: serverModule, args: [ serverName ] }
+            debug: { command: serverModule, args: [ workspace.Name] }
         };
 
         // Get all the per-workspace settings.
@@ -1651,21 +1630,21 @@ export class DefaultClient implements Client {
     private registerFileWatcher(): void {
         console.assert(this.languageClient !== undefined, "This method must not be called until this.languageClient is set in \"onReady\"");
 
-        if (this.rootFolder) {
+        if (vscode.workspace.workspaceFolders) {
             // WARNING: The default limit on Linux is 8k, so for big directories, this can cause file watching to fail.
-            this.rootPathFileWatcher = vscode.workspace.createFileSystemWatcher(
+            this.workspaceFileWatcher = vscode.workspace.createFileSystemWatcher(
                 "**/*",
                 false /*ignoreCreateEvents*/,
                 false /*ignoreChangeEvents*/,
                 false /*ignoreDeleteEvents*/);
 
-            this.rootPathFileWatcher.onDidCreate((uri) => {
+            this.workspaceFileWatcher.onDidCreate((uri) => {
                 this.languageClient.sendNotification(FileCreatedNotification, { uri: uri.toString() });
             });
 
             // TODO: Handle new associations without a reload.
             this.associations_for_did_change = new Set<string>(["c", "i", "cpp", "cc", "cxx", "c++", "cp", "hpp", "hh", "hxx", "h++", "hp", "h", "ii", "ino", "inl", "ipp", "tcc", "idl"]);
-            let settings: OtherSettings = new OtherSettings(this.RootUri);
+            let settings: OtherSettings = new OtherSettings();
             let assocs: any = settings.filesAssociations;
             for (let assoc in assocs) {
                 let dotIndex: number = assoc.lastIndexOf('.');
@@ -1674,7 +1653,7 @@ export class DefaultClient implements Client {
                     this.associations_for_did_change.add(ext);
                 }
             }
-            this.rootPathFileWatcher.onDidChange((uri) => {
+            this.workspaceFileWatcher.onDidChange((uri) => {
                 let dotIndex: number = uri.fsPath.lastIndexOf('.');
                 if (dotIndex !== -1) {
                     let ext: string = uri.fsPath.substr(dotIndex + 1);
@@ -1684,13 +1663,13 @@ export class DefaultClient implements Client {
                 }
             });
 
-            this.rootPathFileWatcher.onDidDelete((uri) => {
+            this.workspaceFileWatcher.onDidDelete((uri) => {
                 this.languageClient.sendNotification(FileDeletedNotification, { uri: uri.toString() });
             });
 
-            this.disposables.push(this.rootPathFileWatcher);
+            this.disposables.push(this.workspaceFileWatcher);
         } else {
-            this.rootPathFileWatcher = undefined;
+            this.workspaceFileWatcher = undefined;
         }
     }
 
@@ -2022,7 +2001,7 @@ export class DefaultClient implements Client {
         this.notifyWhenReady(() => this.languageClient.sendNotification(ResumeParsingNotification));
     }
 
-    private onConfigurationsChanged(configurations: configs.Configuration[]): void {
+    public onConfigurationsChanged(configurations: configs.Configuration[]): void {
         let params: CppPropertiesParams = {
             configurations: configurations,
             currentConfiguration: this.configuration.CurrentConfigurationIndex
@@ -2047,7 +2026,7 @@ export class DefaultClient implements Client {
         });
     }
 
-    private onSelectedConfigurationChanged(index: number): void {
+    public onSelectedConfigurationChanged(index: number): void {
         let params: FolderSelectedSettingParams = {
             currentConfiguration: index
         };
@@ -2057,9 +2036,10 @@ export class DefaultClient implements Client {
         });
     }
 
-    private onCompileCommandsChanged(path: string): void {
-        let params: FileChangedParams = {
-            uri: path
+    public onCompileCommandsChanged(path: string, workspaceFolderPath: string): void {
+        let params: WorkspaceFolderFileChangedParams = {
+            fileUri: path,
+            workspaceFolderUri: workspaceFolderPath
         };
         this.notifyWhenReady(() => this.languageClient.sendNotification(ChangeCompileCommandsNotification, params));
     }
